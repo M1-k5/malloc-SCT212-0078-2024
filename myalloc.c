@@ -10,10 +10,10 @@ typedef struct block {
     size_t size;
     struct block *next;
     int free;
-    int magic;
+    unsigned int magic;
 } block_t;
 
-#define MAGIC 0xDEADBEEF
+#define MAGIC 0xDEADBEEFu
 #define ALIGN 16
 
 static size_t align_up(size_t n) {
@@ -132,6 +132,7 @@ void *my_malloc(size_t size) {
     b->free = 0;
     return payload(b);
 }
+
 void my_free(void *ptr) {
     if (ptr == NULL) {
         return;
@@ -140,12 +141,12 @@ void my_free(void *ptr) {
     block_t *b = header(ptr);
     
     if (b->magic != MAGIC) {
-        write(STDERR_FILENO, "my_free: invalid pointer\n", 25);
+        write(2, "my_free: invalid pointer\n", 25);
         return;
     }
     
     if (b->free) {
-        write(STDERR_FILENO, "my_free: double free detected\n", 30);
+        write(2, "my_free: double free detected\n", 30);
         return;
     }
 
@@ -155,14 +156,132 @@ void my_free(void *ptr) {
         while (cur->free && cur->next != NULL && cur->next->free) {
             char *end = (char *)payload(cur) + cur->size;
             if (end == (char *)cur->next) {
-                cur->size += HDR + cur->next->size;
-                cur->next = cur->next->next;
                 if (tail == cur->next) {
                     tail = cur;
                 }
+                cur->size += HDR + cur->next->size;
+                cur->next = cur->next->next;
             } else {
                 break;
             }
         }
     }
+}
+
+void *my_calloc(size_t n, size_t size) {
+    if (n == 0 || size == 0) {
+        return NULL;
+    }
+    if (size > ((size_t)-1) / n) {
+        return NULL;
+    }
+    
+    size_t total = n * size;
+    void *ptr = my_malloc(total);
+    if (ptr != NULL) {
+        memset(ptr, 0, total);
+    }
+    return ptr;
+}
+
+void *my_realloc(void *ptr, size_t size) {
+    if (ptr == NULL) {
+        return my_malloc(size);
+    }
+    if (size == 0) {
+        my_free(ptr);
+        return NULL;
+    }
+
+    block_t *b = header(ptr);
+    size_t need = align_up(size);
+
+    if (b->size >= need) {
+        return ptr;
+    }
+
+    if (b->next != NULL && b->next->free) {
+        char *end = (char *)payload(b) + b->size;
+        if (end == (char *)b->next) {
+            if (b->size + HDR + b->next->size >= need) {
+                if (tail == b->next) {
+                    tail = b;
+                }
+                b->size += HDR + b->next->size;
+                b->next = b->next->next;
+                return ptr;
+            }
+        }
+    }
+
+    void *new_ptr = my_malloc(size);
+    if (new_ptr == NULL) {
+        return NULL;
+    }
+    
+    size_t copy_size = b->size < size ? b->size : size;
+    memcpy(new_ptr, ptr, copy_size);
+    my_free(ptr);
+    
+    return new_ptr;
+}
+
+void heap_stats(heap_stats_t *out) {
+    size_t free_bytes = 0;
+    size_t free_blocks = 0;
+    size_t largest_free = 0;
+
+    for (block_t *b = head; b != NULL; b = b->next) {
+        if (b->free) {
+            free_bytes += b->size;
+            free_blocks++;
+            if (b->size > largest_free) {
+                largest_free = b->size;
+            }
+        }
+    }
+
+    out->heap_bytes = heap_bytes;
+    out->free_bytes = free_bytes;
+    out->free_blocks = free_blocks;
+    out->largest_free = largest_free;
+}
+
+void heap_dump(void) {
+    char buf[128];
+    int i = 0;
+    for (block_t *b = head; b != NULL; b = b->next) {
+        int len = snprintf(buf, sizeof(buf), "[%d] %p size=%zu %s\n", 
+                           i++, (void *)b, b->size, b->free ? "FREE" : "USED");
+        write(1, buf, len);
+    }
+}
+
+int heap_check(void) {
+    uintptr_t prev_end = 0;
+    block_t *prev = NULL;
+
+    for (block_t *b = head; b != NULL; b = b->next) {
+        if (b->magic != MAGIC) {
+            return 0;
+        }
+        
+        uintptr_t payload_addr = (uintptr_t)payload(b);
+        if (payload_addr % ALIGN != 0) {
+            return 0;
+        }
+
+        if (prev != NULL) {
+            if ((uintptr_t)b < prev_end) {
+                return 0;
+            }
+            if (prev->free && b->free) {
+                return 0;
+            }
+        }
+
+        prev_end = payload_addr + b->size;
+        prev = b;
+    }
+    return 1;
 }
