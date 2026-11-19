@@ -35,3 +35,82 @@ static void *payload(block_t *b) {
 static block_t *header(void *ptr) {
     return (block_t *)((char *)ptr - HDR);
 }
+
+static block_t *grow(size_t need) {
+    size_t chunk = 65536;
+    if (need + HDR > chunk) {
+        chunk = need + HDR;
+    }
+    chunk = align_up(chunk);
+
+    void *old_break = sbrk(0);
+    if (old_break == (void *)-1) {
+        return NULL;
+    }
+
+    uintptr_t addr = (uintptr_t)old_break;
+    size_t pad = (ALIGN - (addr % ALIGN)) % ALIGN;
+    chunk += pad;
+
+    void *new_mem = sbrk(chunk);
+    if (new_mem == (void *)-1) {
+        return NULL;
+    }
+
+    block_t *b = (block_t *)((char *)new_mem + pad);
+    b->size = chunk - pad - HDR;
+    b->next = NULL;
+    b->free = 1;
+    b->magic = MAGIC;
+
+    if (tail) {
+        tail->next = b;
+    } else {
+        head = b;
+    }
+    tail = b;
+    
+    heap_bytes += chunk;
+    return b;
+}
+
+static block_t *find_fit(size_t need) {
+    block_t *best = NULL;
+    size_t best_size = (size_t)-1;
+    
+    for (block_t *b = head; b != NULL; b = b->next) {
+        if (b->free && b->size >= need) {
+            if (policy == FIT_FIRST) {
+                return b;
+            }
+            if (b->size < best_size) {
+                best = b;
+                best_size = b->size;
+            }
+        }
+    }
+    return best;
+}
+
+void set_policy(fit_policy_t p) {
+    policy = p;
+}
+
+void *my_malloc(size_t size) {
+    if (size == 0) {
+        return NULL;
+    }
+    
+    size_t need = align_up(size);
+    block_t *b = find_fit(need);
+    
+    if (b == NULL) {
+        b = grow(need);
+        if (b == NULL) {
+            return NULL;
+        }
+    }
+
+    b->free = 0;
+    return payload(b);
+}
