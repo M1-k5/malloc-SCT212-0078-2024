@@ -96,6 +96,23 @@ void set_policy(fit_policy_t p) {
     policy = p;
 }
 
+static void split_block(block_t *b, size_t need) {
+    if (b->size >= need + HDR + MIN_PAYLOAD) {
+        block_t *rest = (block_t *)((char *)b + HDR + need);
+        rest->size = b->size - need - HDR;
+        rest->free = 1;
+        rest->magic = MAGIC;
+        rest->next = b->next;
+        
+        b->next = rest;
+        b->size = need;
+        
+        if (tail == b) {
+            tail = rest;
+        }
+    }
+}
+
 void *my_malloc(size_t size) {
     if (size == 0) {
         return NULL;
@@ -111,6 +128,7 @@ void *my_malloc(size_t size) {
         }
     }
 
+    split_block(b, need);
     b->free = 0;
     return payload(b);
 }
