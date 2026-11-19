@@ -132,3 +132,37 @@ void *my_malloc(size_t size) {
     b->free = 0;
     return payload(b);
 }
+void my_free(void *ptr) {
+    if (ptr == NULL) {
+        return;
+    }
+
+    block_t *b = header(ptr);
+    
+    if (b->magic != MAGIC) {
+        write(STDERR_FILENO, "my_free: invalid pointer\n", 25);
+        return;
+    }
+    
+    if (b->free) {
+        write(STDERR_FILENO, "my_free: double free detected\n", 30);
+        return;
+    }
+
+    b->free = 1;
+
+    for (block_t *cur = head; cur != NULL; cur = cur->next) {
+        while (cur->free && cur->next != NULL && cur->next->free) {
+            char *end = (char *)payload(cur) + cur->size;
+            if (end == (char *)cur->next) {
+                cur->size += HDR + cur->next->size;
+                cur->next = cur->next->next;
+                if (tail == cur->next) {
+                    tail = cur;
+                }
+            } else {
+                break;
+            }
+        }
+    }
+}
