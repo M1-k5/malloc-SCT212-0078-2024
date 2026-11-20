@@ -1,5 +1,5 @@
-# myalloc - Custom Memory Allocator
-
+# myalloc 
+Title: Custom Memory Allocator
 Name: Mike Owen Otieno
 Student ID: SCT212-0078/2024
 
@@ -8,6 +8,15 @@ Student ID: SCT212-0078/2024
 make
 ./test_myalloc
 
+Task Completion
+1. Header & helpers	Complete
+2. grow() with sbrk	Complete
+3. First-fit malloc	Complete
+4. Splitting	Complete
+5. Free & coalescing	Partial
+6. calloc/realloc	Complete
+7. Best-fit/stats/dump/check	Complete
+8. Benchmark & report	Complete
 
 Explanation
 The allocator relies on a single, singly-linked list to track all blocks in the heap in increasing address order. Each block has a header containing the payload size, a pointer to the next block, a free flag, and a magic number to detect invalid pointers.
@@ -41,4 +50,4 @@ Memory is never returned to the OS via sbrk(-n).
 No thread safety (no mutexes).
 
 Sources & AI Declaration
-I used the Linux man pages for sbrk, brk, write, and memset. I used AI assistance to help debug the coalescing loop and block splitting logic.
+I used online platforms like GeeksforGeeks and Linux man pages to understand memory alignment, sbrk, and block coalescing. I also used AI(Deepseek AI) for troubleshooting compiler errors and helping structure the design explanation, debug the coalescing loop and block splitting logic.
